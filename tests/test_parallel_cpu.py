@@ -60,3 +60,24 @@ def test_full_shard_moves_more_than_grad_op() -> None:
     grad_op = run_scenario("collectives_grad_op")["counts"]
     assert full["_allgather_base_"] > grad_op["_allgather_base_"]
     assert full["_reduce_scatter_base_"] == grad_op["_reduce_scatter_base_"]
+
+
+def test_strategies_agree_on_the_loss() -> None:
+    """Sharding moves parameters between ranks; it does not change the arithmetic.
+
+    This is the regression test for a real bug: ``train.py`` used to seed each rank differently
+    before building the model, so every rank initialised different weights. ``fully_shard``
+    chunks the local tensor and never broadcasts, so the sharded strategies quietly kept
+    complementary chunks of different models and still converged. ``no_shard`` did not, and its
+    loss came out 0.39 where the others gave 0.26. The disagreement is the only thing that made
+    the bug visible.
+    """
+    result = run_scenario("strategy_equivalence")
+    losses = result["losses"]
+    # Step 0 is a forward pass on the initial weights. Anything but exact equality means the
+    # ranks built different models, which is the bug this test exists for.
+    assert result["first_step_bitwise_equal"] is True, losses
+    # Later steps reassociate through clip_grad_norm_. Observed 3e-8; the bug produced 0.13.
+    assert result["max_abs_diff"] < 1e-6, result["max_abs_diff"]
+    assert len(losses["full_shard"]) == 4
+    assert losses["full_shard"][-1] < losses["full_shard"][0], "the tiny model should be learning"

@@ -89,6 +89,38 @@ def scenario_collectives(strategy: str, replicate: int = 1) -> dict[str, Any]:
     return {"strategy": strategy, "counts": counts, "units": len(model.blocks) + 1}
 
 
+def scenario_strategy_equivalence(steps: int = 4) -> dict[str, Any]:
+    """The three strategies are the same arithmetic, so they must produce the same losses.
+
+    Sharding changes which rank holds which parameter and which collective moves it. It does not
+    change the gradient. Any disagreement here is a bug in the wrapping, not a numerical effect,
+    and this is the scenario that catches a model initialised differently on each rank: under
+    ``no_shard`` every rank keeps a whole model, so divergent initialisation shows up immediately,
+    while under ``full_shard`` the ranks hold complementary chunks and the loss looks plausible.
+
+    Two different assertions, deliberately. The **first step is bitwise identical** or the ranks
+    did not start from the same weights: it is a forward pass on the initial parameters, with no
+    optimizer arithmetic in front of it, so nothing can excuse a difference. **Later steps drift**
+    by a few ulps, because ``clip_grad_norm_`` reduces a global norm over shards in one case and
+    over whole tensors in the other, and fp32 addition does not reassociate. Measured at 3e-8 on
+    step 4 at world size 2, against the 0.13 the initialisation bug produced.
+    """
+    world = dist.get_world_size()
+    losses = {}
+    for strategy in ("full_shard", "grad_op", "no_shard"):
+        model, optimizer = _model_and_optimizer(strategy, world)
+        losses[strategy] = [_step(model, optimizer, seed=20 + i) for i in range(steps)]
+    reference = losses["full_shard"]
+    return {
+        "losses": losses,
+        "first_step_bitwise_equal": all(v[0] == reference[0] for v in losses.values()),
+        "max_abs_diff": max(
+            abs(a - b) for v in losses.values() for a, b in zip(v, reference, strict=True)
+        ),
+        "world_size": world,
+    }
+
+
 def scenario_resume() -> dict[str, Any]:
     """Six steps uninterrupted against three, snapshot, restore, three more."""
     world = dist.get_world_size()
@@ -130,6 +162,7 @@ SCENARIOS = {
     "collectives_full_shard": lambda: scenario_collectives("full_shard"),
     "collectives_grad_op": lambda: scenario_collectives("grad_op"),
     "collectives_no_shard": lambda: scenario_collectives("no_shard"),
+    "strategy_equivalence": scenario_strategy_equivalence,
     "resume": scenario_resume,
 }
 
