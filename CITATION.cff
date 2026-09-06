@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If this repository is useful in your work, please cite it."
+title: "fsdp-reward-scaling: full-parameter reward-model training across GPUs, measured"
+type: software
+authors:
+  - family-names: Mohammadi
+    given-names: Hadi
+    orcid: "https://orcid.org/0000-0003-0860-9200"
+    affiliation: "Utrecht University"
+version: 0.1.0
+date-released: 2026-09-06
+license: MIT
+repository-code: https://github.com/mohammadi-hadi/fsdp-reward-scaling
+url: https://github.com/mohammadi-hadi/fsdp-reward-scaling
+keywords:
+  - fsdp
+  - distributed-training
+  - pytorch
+  - reward-model
+  - checkpointing

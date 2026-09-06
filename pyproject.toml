@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shardkit"
+version = "0.1.0"
+description = "Full-parameter reward-model training across GPUs with FSDP2, measured end to end"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Hadi Mohammadi" }]
+requires-python = ">=3.12"
+keywords = ["fsdp", "distributed-training", "pytorch", "reward-model", "scaling", "checkpointing"]
+classifiers = [
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+# Pinned below 2.15: the multi-rank CPU/gloo path this repository relies on for its tests is
+# exercised by PyTorch's own suite only at world size 1, so the guarantee here is empirical
+# and belongs to the versions it was checked against.
+dependencies = [
+  "torch>=2.13,<2.15",
+  "pyyaml>=6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/mohammadi-hadi/fsdp-reward-scaling"
+Issues = "https://github.com/mohammadi-hadi/fsdp-reward-scaling/issues"
+
+[project.optional-dependencies]
+train = ["transformers>=4.44", "datasets>=2.20", "accelerate>=1.0"]
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
+
+[project.scripts]
+shardkit = "shardkit.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shardkit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["transformers.*", "datasets.*", "yaml.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "distributed: spawns more than one rank",
+  "gpu: needs CUDA",
+]
