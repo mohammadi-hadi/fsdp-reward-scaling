@@ -22,6 +22,9 @@ classifiers = [
 dependencies = [
   "torch>=2.13,<2.15",
   "pyyaml>=6.0",
+  # Not incidental: numpy RNG state goes into the checkpoint, so a resume needs it to restore
+  # the data order exactly. torch does not guarantee numpy is present.
+  "numpy>=1.26",
 ]
 
 [project.urls]
