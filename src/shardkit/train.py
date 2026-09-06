@@ -41,8 +41,14 @@ from shardkit.parallel import apply_activation_checkpointing, shard
 log = logging.getLogger("shardkit")
 
 
-def _seed_everything(seed: int, rank: int) -> None:
-    """Same data order everywhere, different dropout noise per rank."""
+def _seed_everything(seed: int) -> None:
+    """Identical seed on every rank, so every rank builds the same weights.
+
+    ``fully_shard`` chunks the local tensor in place; it never broadcasts rank 0's
+    parameters. If ranks are seeded differently before ``build()``, rank 0 keeps
+    chunk 0 of one random model and rank 1 keeps chunk 1 of a different one. The
+    per-rank offset belongs after sharding, in :func:`_seed_per_rank`.
+    """
     import random
 
     import numpy as np
@@ -50,13 +56,17 @@ def _seed_everything(seed: int, rank: int) -> None:
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
+
+
+def _seed_per_rank(seed: int, rank: int) -> None:
+    """Decorrelate dropout across ranks. Call only after the model is sharded."""
     torch.manual_seed(seed + rank * 1000)
 
 
 def run(cfg: Config, resume: str | None = None) -> dict[str, Any]:
     device_type = resolve_device(cfg.device_type)
     ranks, device = setup(device_type)
-    _seed_everything(cfg.train.seed, ranks.rank)
+    _seed_everything(cfg.train.seed)
 
     model = build(cfg.model).to(device)
     params = count_parameters(model)
@@ -64,6 +74,7 @@ def run(cfg: Config, resume: str | None = None) -> dict[str, Any]:
         apply_activation_checkpointing(model)
     mesh = build_mesh(device_type, ranks.world_size, cfg.parallel.strategy, cfg.parallel.replicate)
     model = shard(model, mesh, cfg.parallel)
+    _seed_per_rank(cfg.train.seed, ranks.rank)
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay
