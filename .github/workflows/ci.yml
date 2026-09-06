@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # No 3.14 lane: torch does not ship wheels for it at the pinned versions. Add one when
+        # it does, rather than carrying a lane that installs from source and times out.
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install (CPU torch)
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.13,<2.15"
+          pip install -e ".[dev]"
+      - name: Format
+        run: ruff format --check src tests
+      - name: Lint
+        run: ruff check src tests
+      - name: Types
+        run: mypy src
+      # 7 of these spawn two ranks over gloo and assert the sharding semantics and the
+      # bitwise resume. No GPU, no network, under a minute.
+      - name: Tests
+        run: pytest
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (CPU torch)
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.13,<2.15"
+          pip install -e ".[dev]"
+      - name: Two ranks end to end
+        run: bash scripts/smoke_cpu.sh
+      - name: The committed table still matches the committed runs
+        # Regenerating from runs/ and diffing is what stops a number being typed into the
+        # README by hand.
+        run: |
+          python -m shardkit report --runs runs --check
