@@ -1,0 +1,30 @@
+# Two ranks on CPU with gloo, a four-layer model, a handful of steps. Seconds, not minutes.
+# Same code path as a real run: mesh construction, fully_shard, mixed precision, the BT loss,
+# the sampler, checkpointing. Only NCCL and the CUDA memory probes go unexercised.
+run_name: smoke-cpu
+device_type: cpu
+out_dir: runs
+peak_flops_per_gpu: 0        # meaningless on CPU, so MFU reports 0 rather than a fiction
+
+model:
+  tiny: true
+  tiny_layers: 4
+  tiny_hidden: 64
+  tiny_vocab: 256
+  max_length: 32
+
+data:
+  synthetic_pairs: 256
+  micro_batch_pairs: 4
+
+parallel:
+  strategy: full_shard
+  param_dtype: float32     # bf16 works on gloo; fp32 keeps the smoke output readable
+  reduce_dtype: float32
+  activation_checkpointing: false
+
+train:
+  steps: 6
+  warmup_steps: 2
+  lr: 0.001
+  seed: 7

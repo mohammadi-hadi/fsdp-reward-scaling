@@ -1,0 +1,36 @@
+# The primary experiment: full-parameter reward-model training on 4x 48GB GPUs.
+#
+# The memory arithmetic that makes sharding necessary rather than optional. AdamW keeps, per
+# parameter: an fp32 master copy (4B), an fp32 gradient (4B, because reduce_dtype is fp32),
+# and two fp32 moments (8B). That is 16 B/param of static state.
+#
+#   1.72e9 params x 16 B = 27.5 GB = 25.6 GiB per rank, replicated
+#
+# Plus roughly 3.5 GiB of activations under full checkpointing. One GPU therefore needs about
+# 30 GiB before any headroom, and four-way full sharding takes the static part to 6.4 GiB.
+run_name: qwen3-1.7b-4gpu-full-shard
+device_type: auto
+out_dir: runs
+peak_flops_per_gpu: 362.0e12   # L40S bf16 dense; check the spec sheet for other hardware
+
+model:
+  name: Qwen/Qwen3-1.7B-Base
+  tiny: false
+  max_length: 2048
+
+data:
+  dataset: HuggingFaceH4/ultrafeedback_binarized
+  micro_batch_pairs: 8
+
+parallel:
+  strategy: full_shard
+  param_dtype: bfloat16
+  reduce_dtype: float32          # fp32 reduction: bf16 loses small gradient updates in the sum
+  activation_checkpointing: true
+
+train:
+  steps: 60
+  warmup_steps: 10
+  lr: 1.0e-5
+  seed: 7
+  checkpoint_every: 0
