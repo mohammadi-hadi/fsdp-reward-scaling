@@ -157,6 +157,47 @@ def scenario_resume() -> dict[str, Any]:
     }
 
 
+def scenario_rng_per_rank() -> dict[str, Any]:
+    """A resume must give each rank its own RNG stream back, not rank 0's.
+
+    ``train`` seeds the ranks apart after sharding so dropout is decorrelated. DCP treats a plain
+    tensor as replicated, so a checkpoint that stores ``torch.get_rng_state()`` directly hands
+    every rank the same stream on resume and the decorrelation is quietly gone. The check is
+    exact: after restoring, each rank must draw what it would have drawn had nothing happened.
+    """
+    world = dist.get_world_size()
+    rank = dist.get_rank()
+    model, optimizer = _model_and_optimizer("full_shard", world)
+
+    torch.manual_seed(1000 * rank + 7)
+    expected = [float(torch.rand(1).item()) for _ in range(2)]
+
+    torch.manual_seed(1000 * rank + 7)
+    first = float(torch.rand(1).item())
+
+    run_id = os.environ.get("TORCHELASTIC_RUN_ID", "local")
+    shared = Path(tempfile.gettempdir()) / f"shardkit-rng-{run_id}"
+    try:
+        path = shared / "ckpt"
+        ckpt.save(ckpt.AppState(model, optimizer), path)
+        torch.manual_seed(999_999)  # somewhere else entirely
+        restored = ckpt.AppState(model, optimizer)
+        ckpt.load(restored, path)
+        second = float(torch.rand(1).item())
+    finally:
+        dist.barrier()
+        if rank == 0:
+            shutil.rmtree(shared, ignore_errors=True)
+
+    gathered: list[Any] = [None] * world
+    dist.all_gather_object(gathered, {"rank": rank, "second": second})
+    return {
+        "resumed_stream_is_own": [first, second] == expected,
+        "streams_differ_across_ranks": len({g["second"] for g in gathered}) == world,
+        "world_size": world,
+    }
+
+
 SCENARIOS = {
     "sharding": scenario_sharding,
     "collectives_full_shard": lambda: scenario_collectives("full_shard"),
@@ -164,6 +205,7 @@ SCENARIOS = {
     "collectives_no_shard": lambda: scenario_collectives("no_shard"),
     "strategy_equivalence": scenario_strategy_equivalence,
     "resume": scenario_resume,
+    "rng_per_rank": scenario_rng_per_rank,
 }
 
 

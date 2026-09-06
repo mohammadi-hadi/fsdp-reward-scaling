@@ -28,15 +28,28 @@ different random model. `fully_shard` chunks the local tensor and never broadcas
 kept chunk 0 of model A and rank 1 kept chunk 1 of model B. Nothing crashes and the loss still
 falls, because after the first all-gather the ranks agree on whatever they happen to hold.
 
-Mine, and the kind that survives a green test suite. What exposed it was an invariant rather
-than a crash: the three strategies are the same arithmetic, so they must produce the same loss,
-and `no_shard` finished at 0.39 where `full_shard` and `grad_op` both gave 0.26. Under
-`no_shard` each rank keeps a whole model, so divergent initialisation shows immediately; under
-sharding the ranks hold complementary chunks and the curve looks fine.
+Mine, and the kind that survives a green test suite. Worse: the evidence was already committed.
+`runs/` held four smoke runs, and `no_shard` finished at 0.39 where `full_shard` and `grad_op`
+both gave 0.26. The three strategies are the same arithmetic and must agree. Nobody had diffed
+the rows, including me, because each one on its own looks like a loss curve going down.
 
-The per-rank offset now runs after `shard()`, and `test_strategies_agree_on_the_loss` asserts
-the invariant. Loading pretrained weights hides the bug entirely, which is why it would have
-shipped: `from_pretrained` gives every rank the same tensors whatever the seed is.
+Under `no_shard` every rank keeps a whole model, so divergent initialisation shows up
+immediately; under sharding the ranks hold complementary chunks and the curve looks fine. The
+per-rank offset now runs after `shard()`, and `test_strategies_agree_on_the_loss` asserts the
+invariant so the rows cannot drift apart unnoticed again. Loading pretrained weights hides the
+bug entirely, which is why it would have shipped: `from_pretrained` gives every rank the same
+tensors whatever the seed is.
+
+**Then the fix broke the resume.** With the ranks deliberately seeded apart after sharding, the
+per-rank RNG became load-bearing, and `AppState` was storing `torch.get_rng_state()` as a plain
+tensor. DCP treats a plain tensor as replicated and keeps one copy, so every rank came back on
+the same stream: two ranks holding different streams both drew 0.030121922 after a restore.
+Silent, and invisible to the bitwise resume test, which seeds every rank the same.
+
+The states are now gathered and stored per rank, `restore_rng_states` hands each rank its own
+back, and `test_a_resume_gives_each_rank_its_own_rng_stream` checks the exact draw. The general
+lesson is the one above turned around: a checkpoint replicates whatever is not explicitly
+sharded, so anything that is meant to differ per rank has to say so.
 
 **`fully_shard(**kwargs)` type-checks as nothing.**
 Passing the arguments as a dict made mypy fall back to "no overload matches", which was correct

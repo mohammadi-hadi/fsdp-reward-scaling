@@ -12,13 +12,16 @@ where the cluster you resume on is rarely the cluster you crashed on.
 
 from __future__ import annotations
 
+import io
 import logging
 import random
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from torch import nn
 from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
@@ -56,6 +59,42 @@ def set_rng_state(state: dict[str, Any]) -> None:
         torch.cuda.set_rng_state(state["cuda"])
 
 
+def _distributed() -> bool:
+    return dist.is_available() and dist.is_initialized()
+
+
+def all_rng_states() -> list[bytes]:
+    """Every rank's RNG state, serialised, so a resume gives each rank its own stream back.
+
+    Storing ``rng_state()`` directly does not survive a checkpoint. DCP treats a plain tensor as
+    replicated and keeps one copy, so every rank reloads rank 0's stream and the per-rank
+    decorrelation that ``train._seed_per_rank`` sets up is silently gone. Measured before the
+    fix: two ranks holding different streams both drew 0.030121922 after a restore.
+
+    One ``all_gather_object`` per checkpoint, of about 5 KB per rank. Checkpoints are rare.
+    """
+    buffer = io.BytesIO()
+    torch.save(rng_state(), buffer)
+    blob = buffer.getvalue()
+    if not _distributed():
+        return [blob]
+    gathered: list[Any] = [None] * dist.get_world_size()
+    dist.all_gather_object(gathered, blob)
+    return cast("list[bytes]", gathered)
+
+
+def restore_rng_states(blobs: Sequence[bytes]) -> None:
+    """Give each rank its own stream back, reusing one when the world got wider.
+
+    ``rank % len(blobs)`` is the resharding case: resuming a 2-rank checkpoint on 4 ranks has no
+    stored stream for ranks 2 and 3, and sharing one is better than leaving them wherever the
+    process happened to be. Narrowing drops the extra streams, which is exact.
+    """
+    rank = dist.get_rank() if _distributed() else 0
+    blob = blobs[rank % len(blobs)]
+    set_rng_state(torch.load(io.BytesIO(blob), weights_only=False))
+
+
 class AppState(Stateful):
     """Everything needed to carry on as though nothing happened."""
 
@@ -82,7 +121,7 @@ class AppState(Stateful):
                 "epoch": self.epoch,
                 "tokens_seen": self.tokens_seen,
             },
-            "rng": rng_state(),
+            "rng": all_rng_states(),
         }
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
@@ -96,7 +135,7 @@ class AppState(Stateful):
         self.step = progress["step"]
         self.epoch = progress["epoch"]
         self.tokens_seen = progress["tokens_seen"]
-        set_rng_state(state_dict["rng"])
+        restore_rng_states(state_dict["rng"])
 
 
 def save(state: AppState, path: str | Path, *, async_save: bool = False) -> Any:

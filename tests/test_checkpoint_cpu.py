@@ -28,3 +28,15 @@ def test_a_resumed_run_reproduces_an_uninterrupted_one_bitwise() -> None:
 def test_the_step_counter_survives_the_checkpoint() -> None:
     """Loss agreement alone can hide a resume that replayed or skipped a batch."""
     assert run_scenario("resume")["resumed_step"] == 3
+
+
+def test_a_resume_gives_each_rank_its_own_rng_stream() -> None:
+    """DCP replicates a plain tensor, which used to collapse every rank onto one RNG stream.
+
+    ``train`` decorrelates dropout by seeding the ranks apart after sharding. Storing
+    ``torch.get_rng_state()`` as a bare tensor in the checkpoint threw that away on resume: two
+    ranks holding different streams both drew 0.030121922 afterwards.
+    """
+    result = run_scenario("rng_per_rank")
+    assert result["resumed_stream_is_own"] is True
+    assert result["streams_differ_across_ranks"] is True
