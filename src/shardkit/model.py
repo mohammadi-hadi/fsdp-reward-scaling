@@ -57,7 +57,10 @@ class TinyRewardModel(nn.Module):
         # Score the last real token, the same convention a sequence-classification head uses.
         last = attention_mask.sum(dim=1).clamp(min=1) - 1
         pooled = hidden[torch.arange(hidden.size(0), device=hidden.device), last]
-        scores: torch.Tensor = self.score(pooled).squeeze(-1)
+        # ``clone`` because ``squeeze`` returns a view, and FSDP2 warns that an in-place op on a
+        # returned view drops the pre-backward hook and skips the all-gather. Nothing here writes
+        # in place, but the head is 1 float per sequence and a caller should not have to know.
+        scores: torch.Tensor = self.score(pooled).squeeze(-1).clone()
         return scores
 
 
