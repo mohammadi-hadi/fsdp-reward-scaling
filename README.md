@@ -43,10 +43,10 @@ rented and not of the implementation, which is why the communication-volume colu
 <!-- results:begin -->
 | run | hardware | ranks | strategy | step p50 (ms) | step p90 (ms) | tokens/s | tokens/s/rank | peak alloc / resvd (GiB) | MFU | comm GB/step |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| `smoke-cpu` | smoke (CPU) | 2 | `full_shard` | 12.9 | 13.1 | 39,820 | 19,910 | n/a | n/a | 0.001 |
-| `smoke-full_shard` | smoke (CPU) | 2 | `full_shard` | 12.5 | 12.5 | 41,413 | 20,706 | n/a | n/a | 0.001 |
-| `smoke-grad_op` | smoke (CPU) | 2 | `grad_op` | 11.3 | 11.3 | 45,565 | 22,782 | n/a | n/a | 0.001 |
-| `smoke-no_shard` | smoke (CPU) | 2 | `no_shard` | 11.3 | 11.4 | 45,271 | 22,636 | n/a | n/a | 0.001 |
+| `smoke-cpu` | smoke (CPU) | 2 | `full_shard` | 13.0 | 13.1 | 40,007 | 20,003 | n/a | n/a | 0.001 |
+| `smoke-full_shard` | smoke (CPU) | 2 | `full_shard` | 12.6 | 12.7 | 40,878 | 20,439 | n/a | n/a | 0.001 |
+| `smoke-grad_op` | smoke (CPU) | 2 | `grad_op` | 10.9 | 11.0 | 47,243 | 23,622 | n/a | n/a | 0.001 |
+| `smoke-no_shard` | smoke (CPU) | 2 | `no_shard` | 10.1 | 10.2 | 50,535 | 25,268 | n/a | n/a | 0.001 |
 
 **Every row above is a CPU smoke run on a four-layer model.** They are here to show the pipeline produces the table, and they say nothing about throughput on real hardware. The GPU sweep replaces them.
 <!-- results:end -->

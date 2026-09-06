@@ -21,6 +21,23 @@ format, and the bug was that the two ranks never agreed where the checkpoint was
 Mine. The general shape is worth remembering: in SPMD code, anything that generates a name
 generates a *different* name on every rank unless it is derived from something shared.
 
+**Seeding per rank before building the model.**
+`_seed_everything` ended with `torch.manual_seed(seed + rank * 1000)`, which ran before
+`build()`. The intent was decorrelated dropout; the effect was that every rank initialised a
+different random model. `fully_shard` chunks the local tensor and never broadcasts, so rank 0
+kept chunk 0 of model A and rank 1 kept chunk 1 of model B. Nothing crashes and the loss still
+falls, because after the first all-gather the ranks agree on whatever they happen to hold.
+
+Mine, and the kind that survives a green test suite. What exposed it was an invariant rather
+than a crash: the three strategies are the same arithmetic, so they must produce the same loss,
+and `no_shard` finished at 0.39 where `full_shard` and `grad_op` both gave 0.26. Under
+`no_shard` each rank keeps a whole model, so divergent initialisation shows immediately; under
+sharding the ranks hold complementary chunks and the curve looks fine.
+
+The per-rank offset now runs after `shard()`, and `test_strategies_agree_on_the_loss` asserts
+the invariant. Loading pretrained weights hides the bug entirely, which is why it would have
+shipped: `from_pretrained` gives every rank the same tensors whatever the seed is.
+
 **`fully_shard(**kwargs)` type-checks as nothing.**
 Passing the arguments as a dict made mypy fall back to "no overload matches", which was correct
 and unhelpful. Passing them as explicit keywords restored the check. Left as explicit keywords
