@@ -1,0 +1,60 @@
+{
+  "config": {
+    "run_name": "smoke-cpu",
+    "device_type": "cpu",
+    "out_dir": "runs",
+    "peak_flops_per_gpu": 0,
+    "model": {
+      "name": "Qwen/Qwen3-1.7B-Base",
+      "tiny": true,
+      "tiny_layers": 4,
+      "tiny_hidden": 64,
+      "tiny_vocab": 256,
+      "max_length": 32
+    },
+    "data": {
+      "dataset": "HuggingFaceH4/ultrafeedback_binarized",
+      "train_split": "train_prefs",
+      "eval_split": "test_prefs",
+      "synthetic_pairs": 256,
+      "micro_batch_pairs": 4
+    },
+    "parallel": {
+      "strategy": "full_shard",
+      "replicate": 1,
+      "param_dtype": "float32",
+      "reduce_dtype": "float32",
+      "activation_checkpointing": false
+    },
+    "train": {
+      "steps": 6,
+      "warmup_steps": 2,
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "grad_accum": 1,
+      "seed": 7,
+      "checkpoint_every": 0,
+      "inject_fail_at_step": -1,
+      "inject_fail_rank": 0
+    }
+  },
+  "summary": {
+    "steps_timed": 4.0,
+    "step_time_median_s": 0.012913437560200691,
+    "step_time_p90_s": 0.013069374952465296,
+    "tokens_per_s": 39820.14838999734,
+    "padding_share": 0.0,
+    "final_loss": 0.25848034024238586,
+    "peak_allocated_gib": 0.0,
+    "peak_reserved_gib": 0.0,
+    "alloc_retries": 0.0,
+    "params": 216513.0,
+    "world_size": 2.0,
+    "strategy": "full_shard",
+    "wall_s": 0.14259291579946876,
+    "tokens_per_s_per_gpu": 19910.07419499867,
+    "mfu": 0.0,
+    "hfu": 0.0,
+    "comm_gb_per_step": 0.000866052
+  }
+}
