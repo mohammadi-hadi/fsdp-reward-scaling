@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "shardkit"
 version = "0.1.0"
-description = "Full-parameter reward-model training across GPUs with FSDP2, measured end to end"
+description = "Full-parameter reward-model training across GPUs with FSDP2, verified on CPU, GPU sweep planned"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

@@ -7,7 +7,7 @@
 [![PyTorch](https://img.shields.io/badge/pytorch-2.13%E2%80%932.14-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-*Full-parameter reward-model training sharded across GPUs, measured end to end: throughput, memory, scaling efficiency, and what happens when a rank dies.*
+*Full-parameter reward-model training sharded with FSDP2, verified on CPU down to the collective counts and a bitwise resume, with a GPU sweep planned for throughput, memory, scaling efficiency and a killed rank.*
 
 </div>
 
@@ -21,22 +21,27 @@ which does not fit on a 48 GB card at any batch size, including one**.
 
 ## What this is, and what it is not
 
-Four L40S GPUs on one rented node, models at 1.7B and 4B parameters, about eight hours of GPU
-time. No cluster, no 100B-parameter run, no multi-node interconnect, and no claim that any of
-this is production scale. The scope is deliberately the part that does not change with scale:
+The code, the tests and the measurement pipeline are finished, and everything runs on CPU. On
+two ranks over gloo the test suite asserts the collectives each strategy issues and a bitwise
+resume from a sharded checkpoint. The GPU sweep has not run yet. It is planned for four L40S
+GPUs on one rented node, models at 1.7B and 4B parameters, about eight hours of GPU time,
+scripted in `scripts/bench_sweep.sh` and `scripts/failure_drill.sh` with the sequence in
+`docs/RUNBOOK.md`. No cluster, no 100B-parameter run, no multi-node interconnect, and no claim
+that any of this is production scale. The scope is deliberately the part that does not change with scale:
 sharding parameters, gradients and optimizer state across ranks; measuring what that costs in
 throughput and what it buys in memory; writing and reloading a sharded checkpoint; and killing
 a rank in the middle of a run to get the training back.
 
-The numbers come from `runs/`, which holds per-step JSONL and a resolved config for every
-configuration. `make table` regenerates the table below from those logs, and CI fails if the
+The table comes from `runs/`, which holds per-step JSONL and a resolved config for every
+configuration. Today those are CPU smoke runs, and the sweep's logs will replace them. `make table` regenerates the table below from those logs, and CI fails if the
 regenerated table differs from the committed one, so a number here cannot drift from the log
-that produced it. Where a column is an upper bound and not a measurement, the header says so. `docs/FAILURES.md` keeps what went wrong on the box, including the parts that were my
-fault.
+that produced it. Where a column is an upper bound and not a measurement, the header says so. `docs/FAILURES.md` keeps what went wrong building it on a laptop, including the parts that were
+my fault; its section for the rented box stays empty until the sweep runs.
 
-The L40S has no NVLink, so the collectives run over PCIe and the scaling efficiency below is
-worse than the same code would show on an NVLink node. That is a property of the hardware I
-rented and not of the implementation, which is why the communication-volume column is there.
+The L40S has no NVLink, so on the planned node the collectives will run over PCIe and the
+scaling efficiency the sweep measures will be worse than the same code would show on an NVLink
+node. That will be a property of the hardware and not of the implementation, which is why the
+table carries an analytic communication-volume column.
 
 ## Results
 
